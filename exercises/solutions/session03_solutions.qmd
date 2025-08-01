@@ -1,0 +1,370 @@
+---
+title: "session03 - exercises solutions"
+format: html
+editor: visual
+date: 2025-07-17
+author: Timo Roettger
+execute:
+  error: false
+  warning: false
+  message: false
+  cache: true
+---
+
+# Preamble: Loading packages and configuration
+
+```{r data_and_libraries}
+#| echo: false
+
+# function to ignoring the seeting of the relative path below when knitting
+run_if_not_knitting <- function(expr) {
+  if (!isTRUE(getOption("knitr.in.progress"))) {
+    eval(expr)
+  }
+}
+
+
+# nifty code using the pacman package
+# it checks if the packages specified below are installed, if not, they will be installed, if yes, they will be loaded
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(rstudioapi, tidyverse)
+
+# set the current working directory to the one where this file is
+run_if_not_knitting(current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path))
+run_if_not_knitting(setwd(current_working_dir))
+
+```
+
+# Read data
+
+```{r preprocessing}
+
+# Lets' load in our data sets
+rng <- read_csv("../../data/RNG_original.csv")
+
+```
+
+# Inspect data
+
+Let's have a first look at the RNG_class data again.
+
+```{r summary_1}
+
+rng
+
+```
+
+Seems like there is a lot going on, right?
+
+For this session (and the exercise), the following columns will be relevant:
+
+1.  `subject`: a unique identifier for the participant
+
+2.  `language`: what language the participant spoke (categorical: German vs. Norwegian)
+
+3.  `movement`: The nature of the gesture accompanying the rng (categorical: outwards, inwards)
+
+4.  `number`: The number generated (numeric, 1-30)
+
+5.  `trial`: the trial number, i.e. which position in the sequence from 1-50 (numeric)
+
+For now, let's select only 4 out of the 5 variables: `subject`, `movement`, `number` and `trial`. We use the amazing `select()` function to get rid of those columns we don't need right now. We save this new dataset under a new name `rng_selected`.
+
+## `select()`
+
+```{r select_1}
+
+# the following will create a new dataset which is a subset of rng
+rng_selected <-
+  rng |>
+  # select is super intuitive, arguments are the selected columns
+  select(subject, movement, number, trial)
+
+# let's have a look
+rng_selected
+
+```
+
+Okay that is definitely easier to handle. Cool. Alternatively, you can formulate the selection by excluding those columns that you don't want to select like so:
+
+```{r select_2}
+
+rng_selected_2 <-
+  rng |>
+  # select is super intuitive, arguments are the selected columns or the one(s) that we do not want to keep preceded by minus
+  select(-language)
+
+# let's have a look
+rng_selected_2
+
+```
+
+If you have a lot of columns and want to keep most of them, the latter strategy might be more efficient.
+
+## `filter()`
+
+Now let's look only at a subset of entries. We use the `filter()` function for that. For example, let's filter all responses that happened in the first half of the experiment, so trials 1-55.
+
+```{r filter1}
+
+rng_subset <-
+  rng_selected |> 
+  filter(trial < 56)
+
+# did it work? let's see the range of values on trial
+range(rng_subset$trial)
+# should be 1-55
+
+```
+
+Or perhaps you are interested in the data for only outward movements
+
+```{r filter2}
+
+rng_subset_2 <-
+  rng_selected |>
+  filter(movement == "outwards")
+
+# did it work? let's see the range of values on trial
+table(rng_subset_2$movement)
+# should be only outward
+
+```
+
+So, the `filter()` function takes the input tibble as its first argument. The second argument is a logical statement that you use to put conditions on the tibble, thus restricting the data to a subset of rows.
+
+## `mutate()`
+
+Often we need the data to create a new variable from the existing ones. We can use the very handy `mutate()` function for that. The `mutate()` function can be used to change the content of a tibble. For example, I could create a new column that transforms the trial numbers into a number that represents "completed in %", so that the new column indicates when an observation is made relative to the length of the experiment. For that we relate the trial number to the maximum trial number (we get a number between 0 and 1) and then multiply by 100 to get %.
+
+```{r mutate1}
+
+rng_mutated <-
+  rng_selected |>
+  mutate(trial_percent = (trial / max(trial)) * 100)
+  
+# Did it work?
+rng_mutated
+# Looks like it
+
+```
+
+We can also create categories with the `mutate()` function. For example, I might want to categorize the generated numbers into small numbers (1-10), medium number (11-20) and large numbers (21-30). Let's create a new variable called `number_category` that categorizes numbers accordingly. For that we will use another super hand function: `case_when()`. The function specifies a condition and what should happen if the condition is met. So for example if the condition `number < 11` (the number is smaller than 11) is met, store "small" as the `number_category`. The cool thing about `case_when()` is that you can chain many conditions together. So here we do three conditions for the three categories:
+
+```{r mutate_2}
+
+rng_mutated_2 <-
+  rng_mutated |>
+  mutate(number_category = case_when(
+    number < 11 ~ "small",
+    number > 10 & number < 21 ~ "medium",
+    number > 20 ~ "large")
+  )
+  
+# Did it work?
+rng_mutated_2
+# Looks like it
+
+```
+
+Awesome!
+
+## `group_by()` & `summarise()`
+
+We haven't talked about it much yet, but a super important part of statistics are summary statistics. Simply put, summary statistics summarize a bunch of numbers into less numbers. For example, the average (or mean) of `8`, `1`, and `6` is `5`. So the average summarizes three numbers with one number. We can generate summary statistics of certain variables with a combination of `group_by()` & `summarise()`.
+
+Let's group observations according to the gesture (`movement`), and calculate the average `number` of these two groups. The average is also called the mean and that is the function that we use here to calculate it. Don't worry too much about it now, we will learn more about this concept in the next chapter. We call the newly created variable: `mean_number`.
+
+```{r summarise_1}
+
+rng_summarise <-
+  rng_mutated_2 |>
+  group_by(movement) |>
+  summarise(mean_number = mean(number, na.rm = T))
+  # the na.rm = T is an argument that is used to tell R that NAs should be ignored 
+  # when calculating the summary statistics because R throws an error 
+  # when having to calculate with a vector that contains NAs
+
+# show the aggregated data frame
+rng_summarise
+
+```
+
+Huh, this is quite interesting, isn't it? People seem to generate higher numbers when they make an outward movement, vs. an inward movement. We can also `group_by` multiple variables to see how these summary statistics interact with different groupings. Let's see if this movement effect is true for all number categories:
+
+```{r summarise_2}
+
+rng_summarise_2 <-
+  rng_mutated_2 |>
+  group_by(number_category, movement) |>
+  summarise(mean_number = mean(number, na.rm = T))
+
+# show the aggregated data frame
+rng_summarise_2
+
+```
+
+Indeed it is. Cool!
+
+Now we can put multiple steps into one beautiful pipeline:
+
+```{r pipeline_1}
+
+rng_pipeline <- rng |>
+    select(-language) |> 
+  mutate(number_category = case_when(
+    number < 11 ~ "small",
+    number > 10 & number < 21 ~ "medium",
+    number > 20 ~ "large")
+  ) |> 
+  group_by(number_category, movement) |>
+  summarise(mean_number = mean(number, na.rm = T))
+
+# show the aggregated data frame
+rng_pipeline
+
+```
+
+## Exercises
+
+### Exercise 1
+
+(a) Take the `rng` data set and store a filtered variant of it as `rng_filtered`. The instruction of the experiment suggested that people generated numbers between 1 and 30. Please filter for observations that are within that range.
+
+```{r exercise_1a}
+
+range(rng$number) # aha there are indeed too high numbers
+
+rng_filtered <- rng |> 
+  filter(number > 0,
+         number < 31)
+
+```
+
+(b) Take `rng_filtered` and store a reduced variant of it as `rng_selected`. The new data frame should not contain the column `trial.`
+
+```{r exercise_1b}
+
+rng_selected <- rng_filtered |> 
+  select(-trial)
+  
+```
+
+(c) Now create a new variable called `number_digits` in which you bin numbers that are one digit (i.e. 1,2,3,4,5,6,7,8,9) and all other numbers. Give the two categories appropriate names and store the new data set as `rng_mutated`. (Tip: you will need the `mutate()` function and the `case_when()` function.)
+
+```{r exercise_1c}
+
+rng_mutate <- rng_selected |> 
+  mutate(number_digits = case_when(
+    number < 10 ~ "one digit",
+    number > 9 ~ "multiple digits"
+  ))
+
+```
+
+(d) Calculate the average `number` for the four combinations of languages and movements
+
+```{r exercise_1d}
+
+rng_summarised <- rng_mutate |> 
+  group_by(language,movement) |> 
+  summarise(mean_number = mean(number, na.rm = TRUE))
+
+rng_summarised
+
+```
+
+(e) Do all of the above (a-d) in one pipeline.
+
+```{r exercise_1e}
+
+rng_new <- rng |> 
+  filter(number > 0,
+         number < 31) |> 
+  select(-trial) |> 
+  mutate(number_digits = case_when(
+    number < 10 ~ "one digit",
+    number > 9 ~ "multiple digits"
+  )) |> 
+  group_by(language,movement) |> 
+  summarise(mean_number = mean(number, na.rm = TRUE))
+
+rng_new
+
+```
+
+### Exercise 2
+
+For the next exercise we use a really cool dataset collected by Bodo Winter (yes, the guy who wrote our textbook).
+
+Winter, B., & Matlock, T. (2013).Making judgments based on similarity and proximity. Metaphor and Symbol, 28(4), 219-232.
+
+In this study, they investigated the conceptual structure of the metaphor “SIMILARITY IS PROXIMITY.” They did a series of experiments in which they investigated whether participants judge entities to be closer to each other when they are thought to be more similar. They presented participants with descriptions of two cities. These cities either sounded similarly or they sounded differently (`Phon`). Moreover, the descriptions depicted the cities as either semantically similar or different (`Sem`). After reading both descriptions and seeing both names, participant had to draw into a map and had to randomly guess where these two cities are located. The authors measured the distance between the two cities for each participant.
+
+I loaded the data into R for you:
+
+```{r load_sim}
+
+similarity <- read_csv("linguistic_similarity.csv")
+
+# have a look
+similarity
+
+```
+
+(a) First let us aggregate the `Distance` data across both `Sem` and `Phon`. Use `group_by` and `summarise` to calculate the mean. If you output `NA`s, remember why this could be and fix it.
+
+```{r exercise2a, warning = F, message = F}
+
+similarity %>% 
+  group_by(Sem, Phon) %>% 
+  summarise(mean_distance = mean(Distance, na.rm = TRUE))
+
+```
+
+(b) Take the `similarity` data set and store a reduced variant of it. We are not interested in the `Phon` variable for now. Get rid of it and store the result as a new dataset.
+
+```{r exercise2b}
+
+# load in
+sim_reduced <- 
+  similarity %>% 
+  select(-Phon)
+
+```
+
+(c) Now use the `rename()` function (#askgoogle) to rename the `Sem` column to "Semantic". Store the new dataset.
+
+```{r exercise2c}
+
+sim_renamed <- 
+  sim_reduced %>% 
+  rename("Semantic" = Sem)
+
+```
+
+(d) Filter the data to only include `Distance` values between 0 and 150. Store the new dataset.
+
+```{r exercise2d}
+
+sim_filtered <- 
+  sim_renamed %>% 
+  filter(Distance >= 0 & Distance <= 150)
+
+```
+
+(e) Do all of the above (b-d) in one pipeline.
+
+```{r exercise2e}
+
+sim_filtered <- 
+  similarity %>% 
+  select(-Phon) %>% 
+  rename("Semantic" = Sem) %>% 
+  filter(Distance >= 0 & Distance <= 150)
+
+sim_filtered
+
+```
+
+You are awesome!
